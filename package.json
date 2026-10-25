@@ -1,0 +1,17 @@
+{
+  "name": "facebook-cobalt-downloader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A small Facebook public-media downloader backed by a Cobalt API instance",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
