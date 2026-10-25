@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Facebook Downloader</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #10131a; color: #f4f6fb; }
+    main { width: min(680px, calc(100% - 32px)); padding: 28px; border: 1px solid #2c3444; border-radius: 18px; background: #171c26; box-shadow: 0 18px 60px #0005; }
+    h1 { margin-top: 0; font-size: 1.8rem; }
+    p { color: #b7c0d1; line-height: 1.5; }
+    label { display: block; margin: 20px 0 8px; font-weight: 700; }
+    input, select, button { box-sizing: border-box; width: 100%; border-radius: 10px; border: 1px solid #3a455a; padding: 12px 14px; font: inherit; }
+    input, select { background: #0f131b; color: #fff; }
+    button { margin-top: 14px; border: 0; background: #3b82f6; color: #fff; font-weight: 700; cursor: pointer; }
+    button.secondary { background: #2b3445; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #message { margin-top: 18px; white-space: pre-wrap; }
+    #result { margin-top: 18px; padding: 14px; border-radius: 10px; background: #0f131b; overflow-wrap: anywhere; }
+    a { color: #80b4ff; }
+    .hint { font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Facebook Downloader</h1>
+    <p>Paste a public Facebook video or <code>fb.watch</code> link. The server removes common tracking parameters, then asks Cobalt for a download result.</p>
+
+    <form id="downloadForm">
+      <label for="url">Facebook URL</label>
+      <input id="url" name="url" type="url" placeholder="https://www.facebook.com/..." required autocomplete="url">
+
+      <label for="quality">Video quality</label>
+      <select id="quality" name="quality">
+        <option value="720">720p</option>
+        <option value="1080">1080p</option>
+        <option value="480">480p</option>
+        <option value="360">360p</option>
+        <option value="max">Maximum available</option>
+      </select>
+
+      <button id="fixButton" class="secondary" type="button">Fix Facebook URL</button>
+      <button id="downloadButton" type="submit">Get download link</button>
+    </form>
+
+    <div id="message" role="status"></div>
+    <div id="result" hidden></div>
+    <p class="hint">Only public content you are allowed to download is supported. This does not bypass Facebook login, private posts, DRM, or access controls.</p>
+  </main>
+
+  <script>
+    const form = document.querySelector("#downloadForm");
+    const urlInput = document.querySelector("#url");
+    const qualityInput = document.querySelector("#quality");
+    const message = document.querySelector("#message");
+    const result = document.querySelector("#result");
+    const buttons = [...document.querySelectorAll("button")];
+
+    function setBusy(busy) {
+      buttons.forEach((button) => { button.disabled = busy; });
+    }
+
+    function showError(text) {
+      result.hidden = true;
+      message.textContent = text;
+      message.style.color = "#ff9d9d";
+    }
+
+    async function postJson(endpoint, body) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Request failed.");
+      return data;
+    }
+
+    document.querySelector("#fixButton").addEventListener("click", async () => {
+      setBusy(true);
+      message.textContent = "Fixing URL...";
+      try {
+        const data = await postJson("/api/fix-url", { url: urlInput.value });
+        urlInput.value = data.url;
+        message.textContent = "URL fixed. You can now request the download link.";
+        message.style.color = "#9fe3b1";
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setBusy(true);
+      result.hidden = true;
+      message.textContent = "Contacting Cobalt...";
+      message.style.color = "#b7c0d1";
+
+      try {
+        const data = await postJson("/api/download", {
+          url: urlInput.value,
+          quality: qualityInput.value
+        });
+
+        urlInput.value = data.sourceUrl || urlInput.value;
+        message.textContent = `Cobalt status: ${data.status}`;
+        message.style.color = "#9fe3b1";
+
+        if (data.status === "picker" && Array.isArray(data.picker)) {
+          result.innerHTML = `<strong>Choose a file:</strong><br>` + data.picker.map((item, index) =>
+            `<p><a href="${item.url}" target="_blank" rel="noopener noreferrer">Download item ${index + 1} (${item.type})</a></p>`
+          ).join("");
+        } else if (data.url) {
+          result.innerHTML = `<a href="${data.url}" target="_blank" rel="noopener noreferrer">Download ${data.filename || "file"}</a>`;
+        } else {
+          result.textContent = "Cobalt returned a response, but no direct download link was provided.";
+        }
+        result.hidden = false;
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        setBusy(false);
+      }
+    });
+  </script>
+</body>
+</html>
